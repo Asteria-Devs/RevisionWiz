@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RevisiWizard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background: #f5f5f5; }
+        textarea { width: 100%; height: 80px; padding: 10px; font-size: 16px; }
+        #results { margin-top: 20px; white-space: pre-wrap; background: #fff; padding: 15px; border-radius: 5px; }
+        span.correct { font-weight: bold; color: green; }
+        span.incorrect { font-weight: bold; color: orange; }
+        h1 { text-align: center; }
+        #game-container { max-width: 700px; margin: auto; }
+        button { margin-top: 10px; padding: 8px 18px; font-size: 16px; cursor: pointer; }
+        p { margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>RevisiWizard</h1>
+    <div id="game-container">
+        <p id="character-name"></p>
+        <textarea id="user-input" placeholder="Type the quote here..."></textarea>
+        <button id="submit-btn">Submit</button>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        let quotesData = {};
+
+        async function loadQuotes() {
+            try {
+                const res = await fetch("https://raw.githubusercontent.com/Asteria-Devs/RevisiWizard/main/quote.json");
+                if (!res.ok) throw new Error("Failed to load quotes from GitHub.");
+                quotesData = await res.json();
+                newRound();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        function normalizeText(text) {
+            return text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()…]/g,"").trim();
+        }
+
+        function getRandomCharacter() {
+            const keys = Object.keys(quotesData);
+            return keys[Math.floor(Math.random() * keys.length)];
+        }
+
+        function similarity(a,b){
+            let matches=0;
+            const aWords=a.split(" "), bWords=b.split(" ");
+            const len=Math.max(aWords.length,bWords.length);
+            for(let i=0;i<len;i++){ if(aWords[i]===bWords[i]) matches++; }
+            return matches/len||0;
+        }
+
+        function highlightText(words1, words2) {
+            return words1.map((w,i)=>{
+                if(i<words2.length && normalizeText(w)===normalizeText(words2[i])) return `<span class="correct">${w}</span>`;
+                else return `<span class="incorrect">${w}</span>`;
+            }).join(" ");
+        }
+
+        function evaluateQuote(character, userInput) {
+            const userWords = normalizeText(userInput).split(/\s+/);
+            let bestScore = 0, bestQuote=null, bestJudiciousness=0, bestMethods=[], highlightedUser="", highlightedCorrect="";
+
+            for (let entry of quotesData[character]) {
+                const correctQuote = entry.quote;
+                const correctWords = normalizeText(correctQuote).split(/\s+/);
+
+                // Word match
+                let matches = 0;
+                for(let w of userWords) if(correctWords.includes(w)) matches++;
+                let wordScore = matches/Math.max(correctWords.length,userWords.length);
+                let seqScore = similarity(userWords.join(" "), correctWords.join(" "));
+                let finalScore = Math.round((wordScore*0.85 + seqScore*0.15)*100*100)/100;
+
+                if(finalScore > bestScore){
+                    bestScore=finalScore;
+                    bestQuote=correctQuote;
+                    bestJudiciousness=entry.judiciousness;
+                    bestMethods=entry.methods;
+                    highlightedUser = highlightText(userWords, correctWords);
+                    highlightedCorrect = highlightText(correctWords, userWords);
+                }
+            }
+
+            return {
+                accuracy: bestScore,
+                bestQuote: bestQuote,
+                judiciousness: bestJudiciousness,
+                methods: bestMethods,
+                highlightedUser: highlightedUser,
+                highlightedCorrect: highlightedCorrect
+            };
+        }
+
+        function newRound(){
+            if(!quotesData || Object.keys(quotesData).length===0) return;
+            const character = getRandomCharacter();
+            document.getElementById("character-name").innerText = "Character: "+character;
+            document.getElementById("user-input").value="";
+            document.getElementById("results").innerHTML="";
+        }
+
+        document.getElementById("submit-btn").addEventListener("click", ()=>{
+            const character = document.getElementById("character-name").innerText.split(": ")[1];
+            const userInput = document.getElementById("user-input").value;
+            if(userInput.trim()==="") return;
+            const result = evaluateQuote(character,userInput);
+            document.getElementById("results").innerHTML = `
+                <p><strong>Your attempt:</strong> ${result.highlightedUser}</p>
+                <p><strong>Correct quote:</strong> ${result.highlightedCorrect}</p>
+                <p>Accuracy: ${result.accuracy}% | Judiciousness: ${result.judiciousness}%</p>
+                <p>Methods: ${result.methods.join(", ")}</p>
+            `;
+            newRound();
+        });
+
+        loadQuotes();
+    </script>
+</body>
+</html>

@@ -12,6 +12,7 @@
         h1 { text-align: center; }
         #game-container { max-width: 700px; margin: auto; }
         button { margin-top: 10px; padding: 8px 18px; font-size: 16px; cursor: pointer; }
+        #next-btn { display: none; margin-left: 10px; }
         p { margin: 5px 0; }
     </style>
 </head>
@@ -21,6 +22,7 @@
         <p id="character-name"></p>
         <textarea id="user-input" placeholder="Type the quote here..."></textarea>
         <button id="submit-btn">Submit</button>
+        <button id="next-btn">Next Round</button>
         <div id="results"></div>
     </div>
 
@@ -47,41 +49,49 @@
             return keys[Math.floor(Math.random() * keys.length)];
         }
 
-        function similarity(a,b){
-            let matches=0;
-            const aWords=a.split(" "), bWords=b.split(" ");
-            const len=Math.max(aWords.length,bWords.length);
-            for(let i=0;i<len;i++){ if(aWords[i]===bWords[i]) matches++; }
-            return matches/len||0;
+        function lcsScore(aWords, bWords){
+            const m = aWords.length, n = bWords.length;
+            const dp = Array.from({length: m+1},()=>Array(n+1).fill(0));
+            for(let i=1;i<=m;i++){
+                for(let j=1;j<=n;j++){
+                    if(aWords[i-1]===bWords[j-1]) dp[i][j]=dp[i-1][j-1]+1;
+                    else dp[i][j]=Math.max(dp[i-1][j],dp[i][j-1]);
+                }
+            }
+            return dp[m][n]/Math.max(m,n);
         }
 
-        function highlightText(words1, words2) {
+        function highlightText(words1, words2){
             return words1.map((w,i)=>{
                 if(i<words2.length && normalizeText(w)===normalizeText(words2[i])) return `<span class="correct">${w}</span>`;
                 else return `<span class="incorrect">${w}</span>`;
             }).join(" ");
         }
 
-        function evaluateQuote(character, userInput) {
+        function evaluateQuote(character, userInput){
             const userWords = normalizeText(userInput).split(/\s+/);
             let bestScore = 0, bestQuote=null, bestJudiciousness=0, bestMethods=[], highlightedUser="", highlightedCorrect="";
 
-            for (let entry of quotesData[character]) {
+            for (let entry of quotesData[character]){
                 const correctQuote = entry.quote;
                 const correctWords = normalizeText(correctQuote).split(/\s+/);
 
-                // Word match
+                // Word-level match
                 let matches = 0;
                 for(let w of userWords) if(correctWords.includes(w)) matches++;
-                let wordScore = matches/Math.max(correctWords.length,userWords.length);
-                let seqScore = similarity(userWords.join(" "), correctWords.join(" "));
-                let finalScore = Math.round((wordScore*0.85 + seqScore*0.15)*100*100)/100;
+                let wordScore = matches / Math.max(correctWords.length,userWords.length);
+
+                // Sequence similarity using LCS
+                let seqScore = lcsScore(userWords, correctWords);
+
+                // Combined score (50/50)
+                let finalScore = Math.round((wordScore*0.5 + seqScore*0.5)*100*100)/100;
 
                 if(finalScore > bestScore){
-                    bestScore=finalScore;
-                    bestQuote=correctQuote;
-                    bestJudiciousness=entry.judiciousness;
-                    bestMethods=entry.methods;
+                    bestScore = finalScore;
+                    bestQuote = correctQuote;
+                    bestJudiciousness = entry.judiciousness;
+                    bestMethods = entry.methods;
                     highlightedUser = highlightText(userWords, correctWords);
                     highlightedCorrect = highlightText(correctWords, userWords);
                 }
@@ -103,21 +113,30 @@
             document.getElementById("character-name").innerText = "Character: "+character;
             document.getElementById("user-input").value="";
             document.getElementById("results").innerHTML="";
+            document.getElementById("next-btn").style.display = "none";
+            document.getElementById("submit-btn").disabled = false;
         }
 
         document.getElementById("submit-btn").addEventListener("click", ()=>{
             const character = document.getElementById("character-name").innerText.split(": ")[1];
             const userInput = document.getElementById("user-input").value;
             if(userInput.trim()==="") return;
+
             const result = evaluateQuote(character,userInput);
+
             document.getElementById("results").innerHTML = `
                 <p><strong>Your attempt:</strong> ${result.highlightedUser}</p>
                 <p><strong>Correct quote:</strong> ${result.highlightedCorrect}</p>
                 <p>Accuracy: ${result.accuracy}% | Judiciousness: ${result.judiciousness}%</p>
                 <p>Methods: ${result.methods.join(", ")}</p>
             `;
-            newRound();
+
+            // Show next round button
+            document.getElementById("next-btn").style.display = "inline-block";
+            document.getElementById("submit-btn").disabled = true;
         });
+
+        document.getElementById("next-btn").addEventListener("click", newRound);
 
         loadQuotes();
     </script>
